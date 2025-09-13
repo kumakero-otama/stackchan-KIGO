@@ -1,0 +1,50 @@
+# PlatformIO build files and cache
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# VSCode settings (uncomment if you want to exclude them)
+# .vscode/
+
+# Build artifacts
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.bak
+*.swp
+*.swo
+*~
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+*.sublime-project
+*.sublime-workspace
+
+# Dependency directories
+lib_deps/
+
+# Environment variables
+.env
+
+# Python cache (if using custom Python scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Documentation build
+docs/_build/

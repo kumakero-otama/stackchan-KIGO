@@ -1,0 +1,57 @@
+{
+    "name": "stackchan-arduino",
+    "keywords": "stackchan, servo, M5Stack",
+    "description": "An M5Stack library for Stackchan",
+    "repository": {
+      "type": "git",
+      "url": "https://github.com/stack-chan/stackchan-arduino.git"
+    },
+    "authors": [
+      {
+        "name": "Takao Akaki",
+        "email": "takaoakaki@gmail.com",
+        "url": "https://mongonta0716.github.io/",
+        "maintainer": true
+      }
+    ],
+    "license": "MIT",
+    "dependencies": [
+      {
+        "owner": "M5Stack",
+        "name": "M5Unified",
+        "version": "^0.2.5"
+      },
+      {
+        "owner": "madhephaestus",
+        "name": "ESP32Servo",
+        "version": "0.13.0"
+      },
+      {
+        "owner": "arminjo",
+        "name": "ServoEasing",
+        "version": "3.1.0"
+      },
+      {
+        "owner": "bblanchon",
+        "name": "ArduinoJson",
+        "version": "^7"
+      },
+      {
+        "owner": "robotis-git",
+        "name": "Dynamixel2Arduino",
+        "version": "^0.7.0"
+      },
+      {
+        "owner": "tobozo",
+        "name": "YAMLDuino",
+        "version": "1.5.0"
+      },
+      {
+        "name": "SCServo",
+        "version": "https://github.com/mongonta0716/SCServo.git"
+      }
+    ],
+    "version": "0.0.4",
+    "frameworks": "arduino",
+    "platforms": "espressif32"
+  }
