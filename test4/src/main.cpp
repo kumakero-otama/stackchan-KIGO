@@ -17,13 +17,19 @@ bool debugMode = true;
 // ディスプレイ設定
 #define DISPLAY_WIDTH 320
 #define DISPLAY_HEIGHT 240
-#define LINE_HEIGHT 16
+#define LINE_HEIGHT 18  // 日本語フォント用に高さを調整
 #define MAX_LINES (DISPLAY_HEIGHT / LINE_HEIGHT)
 
 // 受信データバッファ
 String receivedData = "";
 String displayLines[MAX_LINES];
 int currentLine = 0;
+
+// UTF-8文字処理用
+bool isUTF8Sequence = false;
+int utf8BytesExpected = 0;
+int utf8BytesReceived = 0;
+String utf8Buffer = "";
 
 void setup() {
   // M5Stack初期化
@@ -33,6 +39,9 @@ void setup() {
   M5.Display.clear();
   M5.Display.setTextSize(1);
   M5.Display.setTextColor(WHITE, BLACK);
+  
+  // 日本語フォント設定
+  M5.Display.setFont(&fonts::lgfxJapanGothic_12);
   
   // シリアル初期化
   Serial.begin(115200);
@@ -61,7 +70,7 @@ void setup() {
   M5.Display.setCursor(0, 0);
   M5.Display.println("UART Port C Monitor");
   M5.Display.println("RX: GPIO13, TX: GPIO14");
-  M5.Display.println("Baud: 115200");
+  M5.Display.println("Baud: 9600");
   M5.Display.println("Waiting for data...");
   M5.Display.println("-------------------");
   
@@ -108,7 +117,7 @@ void loop() {
   
   // UART受信データをチェック
   if (UartPortC.available()) {
-    char incomingByte = UartPortC.read();
+    uint8_t incomingByte = UartPortC.read();
     
     // デバッグ: 受信した生バイトを表示
     if (debugMode) {
@@ -116,39 +125,117 @@ void loop() {
                     isPrintable(incomingByte) ? incomingByte : '?');
     }
     
+    // UTF-8文字処理
+    bool processComplete = false;
+    
     if (incomingByte == '\n' || incomingByte == '\r') {
       // 改行文字を受信した場合、完成した行を処理
       if (receivedData.length() > 0) {
-        // シリアルに出力
-        Serial.println("UART RX: " + receivedData);
-        
-        // ディスプレイに追加
-        addLineToDisplay("RX: " + receivedData);
-        
-        // バッファをクリア
-        receivedData = "";
+        processComplete = true;
       }
-    } else if (isPrintable(incomingByte)) {
-      // 印刷可能文字を受信した場合、バッファに追加
-      receivedData += incomingByte;
-      
-      // バッファが長すぎる場合は強制的に行を完成させる
+    } else if (incomingByte < 0x80) {
+      // ASCII文字（1バイト）
+      receivedData += (char)incomingByte;
       if (receivedData.length() > 200) {
-        Serial.println("UART RX (long): " + receivedData);
-        addLineToDisplay("RX: " + receivedData);
-        receivedData = "";
+        processComplete = true;
       }
     } else {
-      // 非印刷可能文字もログに記録
-      if (debugMode) {
-        Serial.printf("Non-printable byte: 0x%02X\n", incomingByte);
+      // UTF-8マルチバイト文字の処理
+      if (!isUTF8Sequence) {
+        // UTF-8シーケンスの開始
+        if ((incomingByte & 0xE0) == 0xC0) {
+          // 2バイト文字
+          utf8BytesExpected = 2;
+        } else if ((incomingByte & 0xF0) == 0xE0) {
+          // 3バイト文字（日本語ひらがな・カタカナ・漢字）
+          utf8BytesExpected = 3;
+        } else if ((incomingByte & 0xF8) == 0xF0) {
+          // 4バイト文字
+          utf8BytesExpected = 4;
+        } else {
+          // 無効なUTF-8開始バイト
+          if (debugMode) {
+            Serial.printf("Invalid UTF-8 start byte: 0x%02X\n", incomingByte);
+          }
+          // 無効なバイトは無視して次のバイトを待つ
+          utf8BytesExpected = 0;
+        }
+        
+        if (utf8BytesExpected > 0) {
+          isUTF8Sequence = true;
+          utf8BytesReceived = 1;
+          utf8Buffer = "";
+          utf8Buffer += (char)incomingByte;
+          
+          if (debugMode) {
+            Serial.printf("UTF-8 sequence start: %d bytes expected\n", utf8BytesExpected);
+          }
+        }
+      } else {
+        // UTF-8シーケンスの継続
+        if ((incomingByte & 0xC0) == 0x80) {
+          utf8Buffer += (char)incomingByte;
+          utf8BytesReceived++;
+          
+          if (utf8BytesReceived >= utf8BytesExpected) {
+            // UTF-8文字完成
+            receivedData += utf8Buffer;
+            if (debugMode) {
+              Serial.printf("UTF-8 character complete: %s\n", utf8Buffer.c_str());
+            }
+            
+            // リセット
+            isUTF8Sequence = false;
+            utf8BytesExpected = 0;
+            utf8BytesReceived = 0;
+            utf8Buffer = "";
+            
+            if (receivedData.length() > 200) {
+              processComplete = true;
+            }
+          }
+        } else {
+          // 無効なUTF-8継続バイト
+          if (debugMode) {
+            Serial.printf("Invalid UTF-8 continuation byte: 0x%02X\n", incomingByte);
+          }
+          // リセット
+          isUTF8Sequence = false;
+          utf8BytesExpected = 0;
+          utf8BytesReceived = 0;
+          utf8Buffer = "";
+        }
       }
+    }
+    
+    // 完成した行を処理
+    if (processComplete) {
+      Serial.println("UART RX: " + receivedData);
+      addLineToDisplay("RX: " + receivedData);
+      receivedData = "";
+      
+      // UTF-8シーケンスもリセット
+      isUTF8Sequence = false;
+      utf8BytesExpected = 0;
+      utf8BytesReceived = 0;
+      utf8Buffer = "";
     }
   }
   
-  // ボタンA: テストデータ送信
+  // ボタンA: 日本語テストデータ送信
   if (M5.BtnA.wasPressed()) {
-    String testData = "{\"test\":\"data\",\"timestamp\":" + String(millis()) + "}";
+    static int testIndex = 0;
+    String testMessages[] = {
+      "{\"message\":\"こんにちは\",\"type\":\"greeting\"}",
+      "{\"sensor\":\"温度\",\"value\":25.6,\"unit\":\"℃\"}",
+      "{\"status\":\"正常\",\"device\":\"センサー1\"}",
+      "{\"text\":\"日本語テスト\",\"encoding\":\"UTF-8\"}",
+      "{\"data\":\"ひらがな・カタカナ・漢字\",\"test\":true}"
+    };
+    
+    String testData = testMessages[testIndex];
+    testIndex = (testIndex + 1) % 5;
+    
     UartPortC.println(testData);
     Serial.println("UART TX: " + testData);
     
@@ -167,7 +254,7 @@ void loop() {
     M5.Display.setCursor(0, 0);
     M5.Display.println("UART Port C Monitor");
     M5.Display.println("RX: GPIO13, TX: GPIO14");
-    M5.Display.println("Baud: 115200");
+    M5.Display.println("Baud: 9600");
     M5.Display.println("Display cleared");
     M5.Display.println("-------------------");
     
